@@ -9,7 +9,7 @@ import threading
 
 from config import BOT_TOKEN
 from utils.ytsearch import search_youtube_multiple, search_youtube, save_user_search, get_smart_recommendations
-from utils.downloader import download_audio
+from utils.downloader import download_audio, cleanup_old_files
 from utils.lyrics import get_lyrics
 from utils.recommender import store_artist, get_recommendations
 from uuid import uuid4
@@ -316,25 +316,36 @@ async def handle_download(query, user_id):
         save_user_search(user_id, "download", selected_song)
         
         loading_msg = await query.message.reply_text(
-            f"📥 <b>Скачиваю:</b> <i>{selected_song['title']}</i>\n⏳ Подождите...",
+            f"📥 <b>Скачиваю:</b> <i>{selected_song['title']}</i>\n⏳ Подождите, это может занять до 30 секунд...",
             parse_mode=ParseMode.HTML
         )
         
-        audio_path = download_audio(selected_song['url'])
+        # Очищаем старые файлы перед скачиванием
+        cleanup_old_files()
+        
+        audio_path = download_audio(selected_song['url'], selected_song['title'])
         
         if audio_path and os.path.exists(audio_path):
-            with open(audio_path, 'rb') as audio_file:
-                await query.message.reply_audio(
-                    audio=audio_file,
-                    title=selected_song['title'],
-                    caption=f"🎵 <b>{selected_song['title']}</b>",
+            try:
+                with open(audio_path, 'rb') as audio_file:
+                    await query.message.reply_audio(
+                        audio=audio_file,
+                        title=selected_song['title'],
+                        caption=f"🎵 <b>{selected_song['title']}</b>",
+                        parse_mode=ParseMode.HTML
+                    )
+                # Удаляем файл после отправки
+                os.remove(audio_path)
+                await loading_msg.delete()
+            except Exception as e:
+                await loading_msg.edit_text(
+                    f"❌ <b>Ошибка при отправке:</b> <i>{str(e)}</i>",
                     parse_mode=ParseMode.HTML
                 )
-            os.remove(audio_path)
-            await loading_msg.delete()
         else:
             await loading_msg.edit_text(
-                f"❌ <b>Ошибка при скачивании:</b> <i>{selected_song['title']}</i>",
+                f"❌ <b>Ошибка при скачивании:</b> <i>{selected_song['title']}</i>\n"
+                f"Возможно, видео недоступно или защищено авторскими правами.",
                 parse_mode=ParseMode.HTML
             )
     except Exception as e:
@@ -371,7 +382,8 @@ async def handle_lyrics_from_search(query, user_id):
                 )
         else:
             await query.message.reply_text(
-                f"❌ <b>Не удалось найти текст для:</b> <i>{selected_song['title']}</i>",
+                f"❌ <b>Не удалось найти текст для:</b> <i>{selected_song['title']}</i>\n"
+                f"Попробуйте поискать вручную через режим 'Получить текст'",
                 parse_mode=ParseMode.HTML
             )
     except Exception as e:
