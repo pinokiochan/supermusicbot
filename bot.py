@@ -3,6 +3,9 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, InlineQueryHandler, ContextTypes
 from telegram import InlineQueryResultArticle, InputTextMessageContent
 from telegram.constants import ParseMode
+import asyncio
+from aiohttp import web
+import threading
 
 from config import BOT_TOKEN
 from utils.ytsearch import search_youtube_multiple, search_youtube, save_user_search, get_smart_recommendations
@@ -11,7 +14,6 @@ from utils.lyrics import get_lyrics
 from utils.recommender import store_artist, get_recommendations
 from uuid import uuid4
 import time
-from functools import lru_cache
 
 # Простой кэш для результатов поиска
 search_cache = {}
@@ -41,6 +43,39 @@ def get_cached_search(query, count=6):
 # Хранение результатов поиска для пользователей
 user_search_results = {}
 user_modes = {}
+
+# Веб-сервер для health checks
+async def health_check(request):
+    return web.Response(text="🎵 Music Bot is running! ✅", status=200)
+
+async def status_check(request):
+    return web.Response(text="OK", status=200)
+
+def start_web_server():
+    """Запуск веб-сервера в отдельном потоке"""
+    async def create_app():
+        app = web.Application()
+        app.router.add_get('/', health_check)
+        app.router.add_get('/health', health_check)
+        app.router.add_get('/status', status_check)
+        
+        port = int(os.environ.get('PORT', 10000))
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, '0.0.0.0', port)
+        await site.start()
+        print(f"🌐 Web server started on port {port}")
+        
+        # Держим сервер запущенным
+        while True:
+            await asyncio.sleep(3600)  # Спим час
+    
+    def run_server():
+        asyncio.run(create_app())
+    
+    # Запускаем в отдельном потоке
+    server_thread = threading.Thread(target=run_server, daemon=True)
+    server_thread.start()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Стартовое сообщение с улучшенным дизайном"""
@@ -363,7 +398,13 @@ async def inline_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.inline_query.answer(inline_results)
 
 if __name__ == "__main__":
+    # Создаем папку для загрузок
     os.makedirs("downloads", exist_ok=True)
+    
+    # Запускаем веб-сервер для health checks
+    start_web_server()
+    
+    # Создаем приложение бота
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -371,11 +412,12 @@ if __name__ == "__main__":
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
     app.add_handler(InlineQueryHandler(inline_handler))
 
-    print("🎵 Улучшенный Music Bot запущен!")
-    print("✨ Новые функции:")
+    print("🎵 Music Bot запущен на Render!")
+    print("✨ Функции:")
     print("   • Множественный выбор из 5+ песен")
     print("   • Поиск по артисту")
-    print("   • Улучшенные рекомендации (5+ песен)")
-    print("   • Красивый интерфейс")
+    print("   • Улучшенные рекомендации")
+    print("   • Health check сервер на порту", os.environ.get('PORT', 10000))
     
+    # Запускаем бота
     app.run_polling()
