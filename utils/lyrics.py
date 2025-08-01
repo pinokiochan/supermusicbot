@@ -1,155 +1,61 @@
 import lyricsgenius
 import re
 from config import GENIUS_API_TOKEN
-import requests
-import time
-import logging
 
-logger = logging.getLogger(__name__)
+genius = lyricsgenius.Genius(GENIUS_API_TOKEN, timeout=15, skip_non_songs=True, verbose=False)
 
-# Инициализируем Genius API с улучшенными настройками
-try:
-    genius = lyricsgenius.Genius(
-        GENIUS_API_TOKEN, 
-        timeout=30, 
-        skip_non_songs=True, 
-        verbose=False,
-        retries=3
-    )
-    genius.remove_section_headers = True
-    logger.info("✅ Genius API инициализирован")
-except Exception as e:
-    logger.error(f"❌ Ошибка инициализации Genius API: {e}")
-    genius = None
-
-def clean_title_for_search(title):
+def clean_title(title):
     """Улучшенная очистка названия для поиска текста"""
-    if not title:
-        return "Unknown Title"
-    
-    # Удаляем все в скобках и кавычках
-    title = re.sub(r'[$$\[].*?[$$\]]', '', title)
-    title = re.sub(r'["""].*?["""]', '', title)
-    
+    # Удаляем все в скобках
+    title = re.sub(r"[$$\[].*?[$$\]]", "", title)
     # Удаляем ключевые слова
-    keywords = [
-        'official', 'video', 'hd', 'audio', 'lyrics', 'music', 'mv', 
-        'feat', 'ft', 'featuring', 'remix', 'cover', 'live', 'acoustic',
-        'version', 'remastered', 'extended', 'radio', 'edit'
-    ]
-    
-    for keyword in keywords:
-        title = re.sub(rf'\b{keyword}\b', '', title, flags=re.IGNORECASE)
-    
-    # Удаляем лишние символы и пробелы
-    title = re.sub(r'[^\w\s-]', '', title)
+    title = re.sub(r"(official|video|hd|audio|lyrics|music|mv|feat|ft\.?)", "", title, flags=re.IGNORECASE)
+    # Удаляем лишние пробелы и символы
     title = re.sub(r'\s+', ' ', title).strip()
+    title = re.sub(r'[^\w\s-]', '', title)
     
-    return title if title else "Unknown Title"
-
-def extract_artist_and_song(title):
-    """Извлечение артиста и названия песни"""
-    title = clean_title_for_search(title)
-    
-    # Пробуем разные разделители
-    separators = [' - ', ' – ', ' — ', ' by ', ' | ']
-    
-    for sep in separators:
-        if sep in title:
-            parts = title.split(sep, 1)
-            if len(parts) == 2:
-                artist = parts[0].strip()
-                song = parts[1].strip()
-                return artist, song
-    
-    # Если разделитель не найден, берем первые слова как артиста
-    words = title.split()
-    if len(words) >= 3:
-        artist = ' '.join(words[:2])
-        song = ' '.join(words[2:])
-        return artist, song
-    
-    return None, title
+    return title
 
 def get_lyrics(title, artist=None):
     """Получение текста песни с улучшенным поиском"""
-    if not genius:
-        logger.error("Genius API недоступен")
-        return "❌ Genius API недоступен"
-    
     try:
-        # Извлекаем артиста и песню из названия
-        if not artist:
-            extracted_artist, song_title = extract_artist_and_song(title)
-            artist = extracted_artist
-            title = song_title
-        
-        logger.info(f"Ищу текст: Артист='{artist}', Песня='{title}'")
+        cleaned_title = clean_title(title)
         
         # Пробуем разные варианты поиска
-        search_variants = []
+        search_variants = [
+            cleaned_title,
+            cleaned_title.split(' - ')[0] if ' - ' in cleaned_title else cleaned_title,
+            ' '.join(cleaned_title.split()[:4])  # Первые 4 слова
+        ]
         
-        if artist:
-            search_variants.extend([
-                f"{artist} {title}",
-                f"{title} {artist}",
-                title
-            ])
-        else:
-            search_variants.append(title)
-        
-        # Добавляем упрощенные варианты
-        simple_title = ' '.join(title.split()[:4])  # Первые 4 слова
-        if simple_title not in search_variants:
-            search_variants.append(simple_title)
-        
-        for i, variant in enumerate(search_variants):
+        for variant in search_variants:
             try:
-                logger.info(f"Попытка {i+1}: '{variant}'")
-                
-                # Добавляем задержку между запросами
-                if i > 0:
-                    time.sleep(1)
-                
-                if artist and i == 0:
-                    song = genius.search_song(title, artist)
+                if artist:
+                    song = genius.search_song(variant, artist)
                 else:
                     song = genius.search_song(variant)
                 
                 if song and song.lyrics:
-                    lyrics = song.lyrics
-                    
                     # Очищаем текст
+                    lyrics = song.lyrics
                     lyrics = re.sub(r'\d+Contributors.*$', '', lyrics, flags=re.DOTALL)
-                    lyrics = re.sub(r'.*?Lyrics', '', lyrics, flags=re.DOTALL)
                     lyrics = re.sub(r'Embed$', '', lyrics)
-                    lyrics = re.sub(r'You might also like.*$', '', lyrics, flags=re.DOTALL)
                     lyrics = lyrics.strip()
                     
                     if len(lyrics) > 50:  # Проверяем, что текст не слишком короткий
-                        logger.info(f"✅ Найден текст длиной {len(lyrics)} символов")
                         return lyrics
-                    
-            except Exception as e:
-                logger.error(f"Ошибка в варианте {i+1}: {e}")
+            except:
                 continue
         
-        logger.warning("Текст не найден ни в одном варианте")
         return None
-        
     except Exception as e:
-        logger.error(f"Общая ошибка получения текста: {e}")
+        print(f"Ошибка получения текста: {e}")
         return None
 
 def search_artist_songs(artist_name, count=5):
     """Поиск песен конкретного артиста"""
-    if not genius:
-        return []
-    
     try:
-        logger.info(f"Ищу песни артиста: {artist_name}")
         artist_obj = genius.search_artist(artist_name, max_songs=count)
-        
         if artist_obj and artist_obj.songs:
             songs_info = []
             for song in artist_obj.songs:
@@ -158,9 +64,8 @@ def search_artist_songs(artist_name, count=5):
                     'artist': song.artist,
                     'url': song.url
                 })
-            logger.info(f"✅ Найдено {len(songs_info)} песен артиста")
             return songs_info
         return []
     except Exception as e:
-        logger.error(f"Ошибка поиска артиста: {e}")
+        print(f"Ошибка поиска артиста: {e}")
         return []
