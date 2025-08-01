@@ -3,6 +3,9 @@ import re
 from config import GENIUS_API_TOKEN
 import requests
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Инициализируем Genius API с улучшенными настройками
 try:
@@ -14,8 +17,9 @@ try:
         retries=3
     )
     genius.remove_section_headers = True
+    logger.info("✅ Genius API инициализирован")
 except Exception as e:
-    print(f"Ошибка инициализации Genius API: {e}")
+    logger.error(f"❌ Ошибка инициализации Genius API: {e}")
     genius = None
 
 def clean_title_for_search(title):
@@ -70,6 +74,7 @@ def extract_artist_and_song(title):
 def get_lyrics(title, artist=None):
     """Получение текста песни с улучшенным поиском"""
     if not genius:
+        logger.error("Genius API недоступен")
         return "❌ Genius API недоступен"
     
     try:
@@ -79,7 +84,7 @@ def get_lyrics(title, artist=None):
             artist = extracted_artist
             title = song_title
         
-        print(f"Ищу текст: Артист='{artist}', Песня='{title}'")
+        logger.info(f"Ищу текст: Артист='{artist}', Песня='{title}'")
         
         # Пробуем разные варианты поиска
         search_variants = []
@@ -100,7 +105,7 @@ def get_lyrics(title, artist=None):
         
         for i, variant in enumerate(search_variants):
             try:
-                print(f"Попытка {i+1}: '{variant}'")
+                logger.info(f"Попытка {i+1}: '{variant}'")
                 
                 # Добавляем задержку между запросами
                 if i > 0:
@@ -122,17 +127,18 @@ def get_lyrics(title, artist=None):
                     lyrics = lyrics.strip()
                     
                     if len(lyrics) > 50:  # Проверяем, что текст не слишком короткий
-                        print(f"Найден текст длиной {len(lyrics)} символов")
+                        logger.info(f"✅ Найден текст длиной {len(lyrics)} символов")
                         return lyrics
                     
             except Exception as e:
-                print(f"Ошибка в варианте {i+1}: {e}")
+                logger.error(f"Ошибка в варианте {i+1}: {e}")
                 continue
         
+        logger.warning("Текст не найден ни в одном варианте")
         return None
         
     except Exception as e:
-        print(f"Общая ошибка получения текста: {e}")
+        logger.error(f"Общая ошибка получения текста: {e}")
         return None
 
 def search_artist_songs(artist_name, count=5):
@@ -141,7 +147,7 @@ def search_artist_songs(artist_name, count=5):
         return []
     
     try:
-        print(f"Ищу песни артиста: {artist_name}")
+        logger.info(f"Ищу песни артиста: {artist_name}")
         artist_obj = genius.search_artist(artist_name, max_songs=count)
         
         if artist_obj and artist_obj.songs:
@@ -152,8 +158,9 @@ def search_artist_songs(artist_name, count=5):
                     'artist': song.artist,
                     'url': song.url
                 })
+            logger.info(f"✅ Найдено {len(songs_info)} песен артиста")
             return songs_info
         return []
     except Exception as e:
-        print(f"Ошибка поиска артиста: {e}")
+        logger.error(f"Ошибка поиска артиста: {e}")
         return []
