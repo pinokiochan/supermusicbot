@@ -25,7 +25,7 @@ def check_ffmpeg():
         return False
 
 def download_audio(url, title="audio"):
-    """Улучшенное скачивание аудио с проверкой ffmpeg"""
+    """Улучшенное скачивание аудио с проверкой доступности"""
     try:
         # Проверяем ffmpeg
         if not check_ffmpeg():
@@ -60,7 +60,9 @@ def download_audio(url, title="audio"):
             'embed_subs': False,
             'writesubtitles': False,
             'writeautomaticsub': False,
-            'ignoreerrors': False,  # Не игнорируем ошибки для лучшей диагностики
+            'ignoreerrors': False,
+            'geo_bypass': True,  # Попытка обхода гео-блокировки
+            'geo_bypass_country': 'US',  # Используем US как страну
         }
         
         logger.info(f"Скачиваю: {url}")
@@ -74,12 +76,17 @@ def download_audio(url, title="audio"):
                     return None
                 
                 # Проверяем доступность
-                if info.get('availability') == 'private':
-                    logger.error("Видео приватное")
+                if info.get('availability') in ['private', 'premium_only', 'subscriber_only']:
+                    logger.error(f"Видео недоступно: {info.get('availability')}")
                     return None
                     
                 if info.get('live_status') == 'is_live':
                     logger.error("Это прямая трансляция - скачивание невозможно")
+                    return None
+                
+                # Проверяем наличие аудио форматов
+                if not info.get('formats'):
+                    logger.error("Нет доступных форматов для скачивания")
                     return None
                     
             except Exception as e:

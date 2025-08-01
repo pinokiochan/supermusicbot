@@ -5,45 +5,72 @@ history = {}
 user_search_history = {}
 
 def search_youtube_multiple(query, count=6):
-    """Быстрый поиск нескольких песен по запросу"""
+    """Быстрый поиск нескольких песен по запросу с fallback"""
     try:
         # Оптимизированные настройки для скорости
         ydl_opts = {
             'quiet': True,
             'no_warnings': True,
-            'extract_flat': True,  # Не извлекаем полную информацию
+            'extract_flat': True,
             'skip_download': True,
             'ignoreerrors': True,
-            'socket_timeout': 10,  # Таймаут 10 секунд
+            'socket_timeout': 10,
         }
         
         with YoutubeDL(ydl_opts) as ydl:
-            # Ищем больше результатов за один запрос
-            search_results = ydl.extract_info(f"ytsearch{count + 2}:{query}", download=False)
+            # Пробуем разные варианты поиска
+            search_queries = [
+                f"ytsearch{count + 5}:{query}",
+                f"ytsearch{count + 5}:{query} official",
+                f"ytsearch{count + 5}:{query} music",
+                f"ytsearch{count + 5}:{query} song"
+            ]
             
-            results = []
-            if 'entries' in search_results:
-                for i, entry in enumerate(search_results['entries'][:count]):
-                    if entry and entry.get('id'):
-                        # Минимальная обработка для скорости
-                        title = entry.get('title', 'Unknown Title')
-                        # Быстрая очистка без regex
-                        title = title.replace('[Official Video]', '').replace('(Official Video)', '')
-                        title = title.replace('[Official Audio]', '').replace('(Official Audio)', '')
-                        title = title.strip()
+            for search_query in search_queries:
+                try:
+                    search_results = ydl.extract_info(search_query, download=False)
+                    
+                    results = []
+                    if 'entries' in search_results:
+                        for i, entry in enumerate(search_results['entries'][:count + 3]):
+                            if entry and entry.get('id'):
+                                # Проверяем доступность видео
+                                video_url = f"https://www.youtube.com/watch?v={entry['id']}"
+                                
+                                # Быстрая проверка доступности
+                                try:
+                                    test_info = ydl.extract_info(video_url, download=False)
+                                    if test_info and not test_info.get('is_live'):
+                                        title = entry.get('title', 'Unknown Title')
+                                        title = title.replace('[Official Video]', '').replace('(Official Video)', '')
+                                        title = title.replace('[Official Audio]', '').replace('(Official Audio)', '')
+                                        title = title.strip()
+                                        
+                                        results.append({
+                                            'index': len(results),
+                                            'title': title,
+                                            'url': video_url,
+                                            'duration': "N/A",
+                                            'uploader': entry.get('uploader', 'YouTube'),
+                                            'id': entry['id']
+                                        })
+                                        
+                                        if len(results) >= count:
+                                            break
+                                except:
+                                    continue  # Пропускаем недоступные видео
+                    
+                    if len(results) >= 3:  # Если нашли хотя бы 3 доступных видео
+                        return results[:count]
                         
-                        results.append({
-                            'index': i,
-                            'title': title,
-                            'url': f"https://www.youtube.com/watch?v={entry['id']}",
-                            'duration': "N/A",  # Не получаем длительность для скорости
-                            'uploader': entry.get('uploader', 'YouTube'),
-                            'id': entry['id']
-                        })
+                except Exception as e:
+                    print(f"Ошибка в поисковом запросе {search_query}: {e}")
+                    continue
             
-            return results
+            return []  # Если ничего не найдено
+            
     except Exception as e:
-        print(f"Ошибка поиска: {e}")
+        print(f"Общая ошибка поиска: {e}")
         return []
 
 def search_youtube(query):
