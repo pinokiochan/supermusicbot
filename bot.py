@@ -67,6 +67,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🎪 Умные рекомендации
 📥 Скачивание в MP3
 
+<b>⚠️ Примечание:</b>
+Из-за ��егиональных ограничений некоторые видео могут быть недоступны.
+Бот использует альтернативные методы поиска.
+
 <b>Просто напиши название песни или артиста!</b>
     """
     
@@ -97,7 +101,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_modes[user_id] = "search_song"
         await query.message.reply_text(
             "🔍 <b>Режим поиска песен активирован!</b>\n\n"
-            "Напиши название песни, и я найду несколько вариантов для выбора 🎵",
+            "Напиши название песни, и я найду несколько вариантов для выбора 🎵\n\n"
+            "<i>💡 Совет: Попробуй популярные песни для лучших результатов</i>",
             parse_mode=ParseMode.HTML
         )
     
@@ -113,7 +118,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user_modes[user_id] = "lyrics"
         await query.message.reply_text(
             "📜 <b>Режим получения текстов активирован!</b>\n\n"
-            "Напиши название песни для получения текста 🎤",
+            "Напиши название песни для получения текста 🎤\n\n"
+            "<i>⚠️ Сервис текстов может быть временно недоступен</i>",
             parse_mode=ParseMode.HTML
         )
     
@@ -146,7 +152,8 @@ async def show_recommendations(message, user_id):
     keyboard = []
     
     for i, rec in enumerate(recs[:6]):
-        text += f"🎵 <b>{i+1}.</b> {rec['title']}\n"
+        source_emoji = "🎵" if rec.get('source') == 'demo' else "🎶"
+        text += f"{source_emoji} <b>{i+1}.</b> {rec['title']}\n"
         text += f"👤 {rec['uploader']}\n\n"
         
         keyboard.append([
@@ -177,7 +184,8 @@ async def text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_song_search(message, query, user_id):
     """Поиск песен"""
     loading_msg = await message.reply_text(
-        "🔍 <b>Ищу песни...</b> ⚡",
+        "🔍 <b>Ищу песни...</b> ⚡\n\n"
+        "<i>Пробую разные методы поиска...</i>",
         parse_mode=ParseMode.HTML
     )
     
@@ -187,7 +195,11 @@ async def handle_song_search(message, query, user_id):
         
         if not results:
             await message.reply_text(
-                f"❌ <b>Ничего не найдено:</b> <i>{query}</i>",
+                f"❌ <b>Ничего не найдено:</b> <i>{query}</i>\n\n"
+                "💡 Попробуйте:\n"
+                "• Более популярные песни\n"
+                "• Другое написание\n"
+                "• Имя артиста + название",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -198,8 +210,20 @@ async def handle_song_search(message, query, user_id):
         keyboard = []
         
         for i, result in enumerate(results):
-            text += f"🎶 <b>{i+1}.</b> {result['title']}\n"
-            text += f"👤 {result['uploader']}\n\n"
+            source_emoji = "🎵" if result.get('source') == 'demo' else "🎶"
+            text += f"{source_emoji} <b>{i+1}.</b> {result['title']}\n"
+            text += f"👤 {result['uploader']}\n"
+            
+            if result.get('source'):
+                source_name = {
+                    'youtube_direct': 'YouTube',
+                    'youtube_proxy': 'YouTube (Proxy)',
+                    'invidious': 'Invidious',
+                    'demo': 'Demo'
+                }.get(result['source'], result['source'])
+                text += f"📡 {source_name}\n"
+            
+            text += "\n"
             
             keyboard.append([
                 InlineKeyboardButton(f"📥 #{i+1}", callback_data=f"download_{i}"),
@@ -220,7 +244,8 @@ async def handle_song_search(message, query, user_id):
 async def handle_artist_search(message, artist_name, user_id):
     """Поиск по артисту"""
     loading_msg = await message.reply_text(
-        f"🎭 <b>Ищу песни артиста...</b> ⚡",
+        f"🎭 <b>Ищу песни артиста...</b> ⚡\n\n"
+        "<i>Использую все доступные методы...</i>",
         parse_mode=ParseMode.HTML
     )
     
@@ -231,7 +256,8 @@ async def handle_artist_search(message, artist_name, user_id):
         
         if not results:
             await message.reply_text(
-                f"❌ <b>Артист не найден:</b> <i>{artist_name}</i>",
+                f"❌ <b>Артист не найден:</b> <i>{artist_name}</i>\n\n"
+                "💡 Попробуйте более известных артистов",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -242,7 +268,8 @@ async def handle_artist_search(message, artist_name, user_id):
         keyboard = []
         
         for i, result in enumerate(results):
-            text += f"🎶 <b>{i+1}.</b> {result['title']}\n\n"
+            source_emoji = "🎵" if result.get('source') == 'demo' else "🎶"
+            text += f"{source_emoji} <b>{i+1}.</b> {result['title']}\n\n"
             
             keyboard.append([
                 InlineKeyboardButton(f"📥 #{i+1}", callback_data=f"download_{i}"),
@@ -280,7 +307,8 @@ async def handle_lyrics_search(message, query):
                 await message.reply_text(f"📜 <b>Текст песни:</b>\n\n<pre>{lyrics}</pre>", parse_mode=ParseMode.HTML)
         else:
             await message.reply_text(
-                f"❌ <b>Не удалось найти текст для:</b> <i>{query}</i>",
+                f"❌ <b>Не удалось найти текст для:</b> <i>{query}</i>\n\n"
+                "⚠️ Сервис текстов временно недоступен из-за региональных ограничений",
                 parse_mode=ParseMode.HTML
             )
     except Exception as e:
@@ -297,6 +325,20 @@ async def handle_download(query, user_id):
         
         selected_song = user_search_results[user_id][index]
         save_user_search(user_id, "download", selected_song)
+        
+        # Проверяем, это демо результат?
+        if selected_song.get('source') == 'demo':
+            await query.message.reply_text(
+                f"⚠️ <b>Демо режим</b>\n\n"
+                f"Это демонстрационный результат для: <i>{selected_song['title']}</i>\n\n"
+                "Скачивание недоступно из-за региональных ограничений YouTube.\n\n"
+                "💡 Попробуйте:\n"
+                "• Использовать VPN\n"
+                "• Другие музыкальные сервисы\n"
+                "• Локальные источники музыки",
+                parse_mode=ParseMode.HTML
+            )
+            return
         
         loading_msg = await query.message.reply_text(
             f"📥 <b>Скачиваю:</b> <i>{selected_song['title']}</i>\n⏳ Подождите...",
@@ -329,7 +371,11 @@ async def handle_download(query, user_id):
                     )
             else:
                 await loading_msg.edit_text(
-                    f"❌ <b>Не удалось скачать:</b> <i>{selected_song['title']}</i>\n"
+                    f"❌ <b>Не удалось скачать:</b> <i>{selected_song['title']}</i>\n\n"
+                    f"Возможные причины:\n"
+                    f"• Региональные ограничения\n"
+                    f"• Видео недоступно\n"
+                    f"• Проблемы с сетью\n\n"
                     f"Попробуйте другую песню из списка.",
                     parse_mode=ParseMode.HTML
                 )
@@ -351,6 +397,16 @@ async def handle_lyrics_from_search(query, user_id):
             return
         
         selected_song = user_search_results[user_id][index]
+        
+        # Проверяем, это демо результат?
+        if selected_song.get('source') == 'demo':
+            await query.message.reply_text(
+                f"⚠️ <b>Демо режим</b>\n\n"
+                f"Это демонстрационный результат для: <i>{selected_song['title']}</i>\n\n"
+                "Получение текстов недоступно из-за ограничений API.",
+                parse_mode=ParseMode.HTML
+            )
+            return
         
         loading_msg = await query.message.reply_text(
             f"📜 <b>Получаю текст:</b> <i>{selected_song['title']}</i>\n⏳ Подождите...",
@@ -374,7 +430,8 @@ async def handle_lyrics_from_search(query, user_id):
                     )
             else:
                 await query.message.reply_text(
-                    f"❌ <b>Не удалось найти текст для:</b> <i>{selected_song['title']}</i>",
+                    f"❌ <b>Не удалось найти текст для:</b> <i>{selected_song['title']}</i>\n\n"
+                    "⚠️ Сервис текстов временно недоступен",
                     parse_mode=ParseMode.HTML
                 )
         except Exception as e:
@@ -452,6 +509,7 @@ async def main():
     logger.info("   • Множественный выбор из 5+ песен")
     logger.info("   • Поиск по артисту")
     logger.info("   • Улучшенные рекомендации")
+    logger.info("   • Альтернативные методы поиска")
     logger.info(f"   • Webhook сервер на порту {port}")
     
     # Держим сервер запущенным
