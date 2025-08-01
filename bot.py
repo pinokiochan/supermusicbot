@@ -4,7 +4,6 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
 from aiohttp import web
-import threading
 import asyncio
 
 from config import BOT_TOKEN
@@ -49,35 +48,6 @@ def get_cached_search(query, count=6):
 # Хранение результатов поиска для пользователей
 user_search_results = {}
 user_modes = {}
-
-# Веб-сервер для health checks
-async def health_check(request):
-    return web.Response(text="🎵 Music Bot is running! ✅", status=200)
-
-def start_web_server():
-    """Запуск веб-сервера в отдельном потоке"""
-    async def create_app():
-        app = web.Application()
-        app.router.add_get('/', health_check)
-        app.router.add_get('/health', health_check)
-        
-        port = int(os.environ.get('PORT', 10000))
-        runner = web.AppRunner(app)
-        await runner.setup()
-        site = web.TCPSite(runner, '0.0.0.0', port)
-        await site.start()
-        logger.info(f"🌐 Web server started on port {port}")
-        
-        # Держим сервер запущенным
-        while True:
-            await asyncio.sleep(3600)
-    
-    def run_server():
-        asyncio.run(create_app())
-    
-    # Запускаем в отдельном потоке
-    server_thread = threading.Thread(target=run_server, daemon=True)
-    server_thread.start()
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Обработчик ошибок"""
@@ -414,13 +384,42 @@ async def handle_lyrics_from_search(query, user_id):
     except Exception as e:
         await query.message.reply_text(f"❌ Произошла ошибка: {str(e)}")
 
-def main():
+# Webhook обработчики
+async def webhook_handler(request):
+    """Обработчик webhook от Telegram"""
+    try:
+        data = await request.json()
+        update = Update.de_json(data, app.bot)
+        await app.process_update(update)
+        return web.Response(status=200)
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return web.Response(status=500)
+
+async def health_check(request):
+    """Health check для Render"""
+    return web.Response(text="🎵 Music Bot is running! ✅", status=200)
+
+async def setup_webhook():
+    """Настройка webhook"""
+    webhook_url = f"https://supermusicbot.onrender.com/webhook"
+    await app.bot.set_webhook(webhook_url)
+    logger.info(f"Webhook установлен: {webhook_url}")
+
+def create_app():
+    """Создание веб-приложения"""
+    web_app = web.Application()
+    web_app.router.add_post('/webhook', webhook_handler)
+    web_app.router.add_get('/', health_check)
+    web_app.router.add_get('/health', health_check)
+    return web_app
+
+async def main():
     """Главная функция"""
+    global app
+    
     # Создаем папку для загрузок
     os.makedirs("downloads", exist_ok=True)
-    
-    # Запускаем веб-сервер для health checks
-    start_web_server()
     
     # Создаем приложение бота
     app = ApplicationBuilder().token(BOT_TOKEN).build()
@@ -432,15 +431,32 @@ def main():
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_handler))
 
-    logger.info("🎵 Music Bot запущен на Render!")
+    # Инициализируем бота
+    await app.initialize()
+    await app.start()
+    
+    # Настраиваем webhook
+    await setup_webhook()
+    
+    # Создаем веб-сервер
+    web_app = create_app()
+    
+    port = int(os.environ.get('PORT', 10000))
+    runner = web.AppRunner(web_app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    
+    logger.info("🎵 Music Bot запущен в WEBHOOK режиме!")
     logger.info("✨ Функции:")
     logger.info("   • Множественный выбор из 5+ песен")
     logger.info("   • Поиск по артисту")
     logger.info("   • Улучшенные рекомендации")
-    logger.info("   • Health check сервер на порту " + str(os.environ.get('PORT', 10000)))
+    logger.info(f"   • Webhook сервер на порту {port}")
     
-    # Запускаем бота
-    app.run_polling(drop_pending_updates=True)
+    # Держим сервер запущенным
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

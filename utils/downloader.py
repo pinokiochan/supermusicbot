@@ -3,6 +3,8 @@ import os
 import re
 import tempfile
 import logging
+import time
+import shutil
 
 logger = logging.getLogger(__name__)
 
@@ -46,11 +48,9 @@ def download_audio(url, title="audio"):
             final_path = f"downloads/{safe_title}_{int(time.time())}.mp3"
             os.makedirs("downloads", exist_ok=True)
             
-            import shutil
             shutil.move(mp3_file, final_path)
             
             # Удаляем временную директорию
-            import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
             
             logger.info(f"Файл сохранен: {final_path}")
@@ -63,14 +63,12 @@ def download_audio(url, title="audio"):
                     final_path = f"downloads/{safe_title}_{int(time.time())}.mp3"
                     os.makedirs("downloads", exist_ok=True)
                     
-                    import shutil
                     shutil.move(temp_file, final_path)
                     shutil.rmtree(temp_dir, ignore_errors=True)
                     
                     return final_path
             
             # Удаляем временную директорию
-            import shutil
             shutil.rmtree(temp_dir, ignore_errors=True)
             return None
                         
