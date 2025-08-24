@@ -99,4 +99,4 @@ venv.bak/
 dmypy.json
 
 /data
-/config.py
+.config.py

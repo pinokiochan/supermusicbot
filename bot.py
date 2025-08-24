@@ -568,6 +568,7 @@ def print_startup_info():
 
 if __name__ == "__main__":
     try:
+        
         print_startup_info()
         logger.info("🚀 Enhanced Music Bot starting...")
         
