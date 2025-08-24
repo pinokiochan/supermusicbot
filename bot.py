@@ -1,5 +1,7 @@
 import os
 import logging
+import subprocess
+import sys
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackQueryHandler, InlineQueryHandler, ContextTypes
@@ -569,6 +571,8 @@ def print_startup_info():
 if __name__ == "__main__":
     try:
         
+        subprocess.run(["pip", "install", "--upgrade", "yt-dlp"], stdout=subprocess.DEVNULL)
+
         print_startup_info()
         logger.info("🚀 Enhanced Music Bot starting...")
         
